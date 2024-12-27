@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Psychrometric Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            margin: 10px 0 5px;
+        }
+
+        input {
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #007BFF;
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        #results {
+            margin-top: 20px;
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Psychrometric Calculator</h1>
+        <form id="calculatorForm">
+            <label for="dryBulb">Dry-bulb Temperature (°C):</label>
+            <input type="number" id="dryBulb" name="dryBulb" required>
+
+            <label for="relativeHumidity">Relative Humidity (%):</label>
+            <input type="number" id="relativeHumidity" name="relativeHumidity" placeholder="Enter RH or leave blank">
+
+            <label for="wetBulb">Wet-Bulb Temperature (°C):</label>
+            <input type="number" id="wetBulb" name="wetBulb" placeholder="Enter Wet-Bulb Temp or leave blank">
+
+            <label for="pressure">Atmospheric Pressure (kPa):</label>
+            <input type="number" id="pressure" name="pressure" value="101.325" required>
+
+            <button type="submit">Calculate</button>
+        </form>
+        <div id="results"></div>
+    </div>
+    <script>
+        function saturationPressure(T) {
+            return 0.61078 * Math.exp((17.27 * T) / (T + 237.3));
+        }
+
+        function humidityRatio(T_db, RH, P) {
+            const P_s = saturationPressure(T_db);
+            return 0.622 * (RH * P_s) / (P - RH * P_s);
+        }
+
+        function relativeHumidityFromWetBulb(T_db, T_wb, P) {
+            const P_s_db = saturationPressure(T_db);
+            const P_s_wb = saturationPressure(T_wb);
+            const W_wb = 0.622 * P_s_wb / (P - P_s_wb);
+            const h_wb = 1.006 * T_wb + W_wb * (2501 + 1.86 * T_wb);
+            const h_db = 1.006 * T_db;
+            const W = (h_wb - h_db) / (2501 + 1.86 * T_db);
+            const RH = (W * P) / (0.622 * P_s_db + W * P_s_db);
+            return RH;
+        }
+
+        function dewPointTemperature(T_db, RH) {
+            const P_s = saturationPressure(T_db);
+            const P_w = RH * P_s;
+            return (237.3 * Math.log(P_w / 0.61078)) / (17.27 - Math.log(P_w / 0.61078));
+        }
+
+        function enthalpy(T_db, W) {
+            return 1.006 * T_db + W * (2501 + 1.86 * T_db);
+        }
+
+        function specificVolume(T_db, W, P) {
+            const T_K = T_db + 273.15;
+            const R_specific = 0.287;
+            return (R_specific * T_K * (1 + 1.6078 * W)) / P;
+        }
+
+        document.getElementById("relativeHumidity").addEventListener("input", function () {
+            document.getElementById("wetBulb").disabled = this.value !== "";
+        });
+
+        document.getElementById("wetBulb").addEventListener("input", function () {
+            document.getElementById("relativeHumidity").disabled = this.value !== "";
+        });
+
+        document.getElementById("calculatorForm").addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            const T_db = parseFloat(document.getElementById("dryBulb").value);
+            const P = parseFloat(document.getElementById("pressure").value);
+
+            const RHInput = document.getElementById("relativeHumidity").value;
+            const T_wbInput = document.getElementById("wetBulb").value;
+
+            let RH;
+
+            if (RHInput !== "") {
+                RH = parseFloat(RHInput) / 100;
+                if (isNaN(RH)) {
+                    alert("Please enter a valid Relative Humidity.");
+                    return;
+                }
+            } else if (T_wbInput !== "") {
+                const T_wb = parseFloat(T_wbInput);
+                if (isNaN(T_wb)) {
+                    alert("Please enter a valid Wet-Bulb Temperature.");
+                    return;
+                }
+                RH = relativeHumidityFromWetBulb(T_db, T_wb, P);
+            } else {
+                alert("Please provide either Relative Humidity or Wet-Bulb Temperature.");
+                return;
+            }
+
+            const W = humidityRatio(T_db, RH, P);
+            const T_dp = dewPointTemperature(T_db, RH);
+            const h = enthalpy(T_db, W);
+            const v = specificVolume(T_db, W, P);
+
+            const resultsDiv = document.getElementById("results");
+            resultsDiv.innerHTML = `
+                <h2>Results:</h2>
+                <p><strong>Humidity Ratio:</strong> ${W.toFixed(6)} kg water/kg dry air</p>
+                <p><strong>Dew Point Temperature:</strong> ${T_dp.toFixed(2)} °C</p>
+                <p><strong>Enthalpy:</strong> ${h.toFixed(2)} kJ/kg dry air</p>
+                <p><strong>Specific Volume:</strong> ${v.toFixed(4)} m³/kg dry air</p>
+                <p><strong>Relative Humidity:</strong> ${(RH * 100).toFixed(2)}%</p>
+            `;
+        });
+    </script>
+</body>
+</html>
